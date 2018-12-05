@@ -1,0 +1,12 @@
+#!/bin/bash
+
+BASE_DIR=$HOME/Repositories/tdcs-pipeline/meshheadmodel/
+
+CONTAINER_NAME=cgal_ubuntu1810
+
+docker run               \
+	--rm                 \
+	--name=ubuntu        \
+	-v $BASE_DIR:/shares \
+	$CONTAINER_NAME      \
+	bash -c "cd /shares/ && cmake . && make VERBOSE=1"	
