@@ -8,7 +8,7 @@ You need the following prerequisite
 - On Ubuntu 18.10 the following packages are required: *build-essential libcgal-dev libgmp-dev libmpfr-dev libvtk6-dev cmake* (this will also install the CGAL development files of the required version)
 - Download the GMSH 3.0.6 source code [3]
 
-After ensuring are prerequisits are met follow this procedure
+After ensuring that all prerequisites are met follow this procedure
 1) Extract the gmsh source code and copy the entire directory into the deploy directory of this repository.
 2) Issue the command `cmake .`.
 3) Finally, run `make`to build the tool.
@@ -33,7 +33,7 @@ Simply build the container with `docker build -t cgal_ubuntu1810 .` in the docke
 
 To compile it is sufficient to run the bash script *docker_compile.sh*. Note that you may have to adjust the variables $BASE_DIR and $CONTAINER_NAME if you use a path/name other then predefined in the file.
 
-When compiled in the container it must also be lauchned from inside the container. You can do this by calling the *docker_run.sh* script which again invokes the *runMeshingTool.sh* script as mentioned before from inside the container. Again you may have to adjust the name of the container and the location of the repository. When using docker to run the tool consider that all paths (both input files and output files) must be specified according to the docker environment NOT according to the host machine. The best pratice is to use the predefined input & output directories and to use paths releative to the MeshHeadModel executable. 
+When compiled in the container it must also be launched from inside the container. You can do this by calling the *docker_run.sh* script which again invokes the *runMeshingTool.sh* script as mentioned before from inside the container. Again you may have to adjust the name of the container and the location of the repository. When using docker to run the tool consider that all paths (both input files and output files) must be specified according to the docker environment NOT according to the host machine. The best practice is to use the predefined input & output directories and to use paths relative to the MeshHeadModel executable. 
 
 ###### Useful links
 [1] The CGAL project: https://doc.cgal.org/4.12/Manual/index.html
