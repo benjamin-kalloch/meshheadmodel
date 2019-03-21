@@ -10,6 +10,11 @@ You need the following prerequisite
 
 After ensuring that all prerequisites are met follow this procedure
 1) Extract the gmsh source code and copy the entire directory into the deploy directory of this repository.
+2) Compile GMSH as a dynamic link library:
+    - After you have copied the source-code folder ('gmsh-3.0.6-source') into the 'deploy' directory, create a folder 'build_lib' in that source directory.
+    - A minimal configuration can be crated using cmake `cmake -DDEFAULT=0 -DENABLE_PARSER=1 -DENABLE_BUILD_DYNAMIC=1 ..`
+    - Run `make -j` to build the successfully configured GMSH
+    - *Note* that any deviations in terms of location or naming scheme of the folder of the GMSH source code and the location of the built library necessitate an adaptation of the 'CMakeLists.txt' file. 
 2) Issue the command `cmake .`.
 3) Finally, run `make`to build the tool.
 
