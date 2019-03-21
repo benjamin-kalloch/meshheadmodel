@@ -1,4 +1,4 @@
-FROM ubuntu:cosmic
+FROM ubuntu:disco
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt -y update 
 RUN apt -y upgrade

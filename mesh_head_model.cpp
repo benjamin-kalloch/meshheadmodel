@@ -51,7 +51,7 @@ typedef CGAL::Exact_predicates_inexact_constructions_kernel Kernel;
     // when the query segment is shorter than a given error bound e. This error bound is given by e=d ×bound where d is
     // the length of the diagonal of the bounding box (in world coordinates) and bound is the argument passed to the
     // constructor of Labeled_image_mesh_domain_3.
-typedef CGAL::Labeled_image_mesh_domain_3<CGAL::Image_3,Kernel> Image_domain;
+typedef CGAL::Labeled_mesh_domain_3<Kernel> Image_domain;
 
     // traits class providing the types and functors required to implement the intersection tests and intersection
     // computations for polyhedral boundary surfaces.
@@ -71,14 +71,20 @@ bool createPolyhedronFromOFF( const char*, Polyhedron& );
 // 
 class Hybrid_domain
 {
-  const Image_domain& m_image_domain;                   // domain containing the segmentation image
-  const std::vector<Polyhedron_domain*> m_poly_domains; // vector of domains for an unknown number of electrode surfaces
+  std::shared_ptr<Image_domain> m_image_domain;                    // domain containing the segmentation image
+  std::shared_ptr< std::vector< std::shared_ptr<Polyhedron_domain> > > m_poly_domains; // vector of domains for an unknown number of electrode surfaces
 
 public:
-  Hybrid_domain( const Image_domain& _image_domain, const std::vector<Polyhedron_domain*> _poly_domains) :
+  Hybrid_domain( ) :
+    m_image_domain( nullptr ),
+    m_poly_domains( nullptr )
+  { }
+  
+  Hybrid_domain( std::shared_ptr<Image_domain> _image_domain, std::shared_ptr< std::vector< std::shared_ptr<Polyhedron_domain> > > _poly_domains) :
     m_image_domain( _image_domain ),
     m_poly_domains( _poly_domains )
-  {}
+  { }
+
 
   // types required by the 'MeshDomain_3' concept
   typedef int Surface_patch_index;
@@ -89,21 +95,39 @@ public:
   typedef Kernel::Point_3 Point_3;
   typedef CGAL::cpp11::tuple<Point_3, Index, int> Intersection;
 
+  void Set_ImageDomain( std::shared_ptr<Image_domain> _img_domain)
+  {
+    m_image_domain = std::move(_img_domain);
+  }
+
+  void Set_PolyDomains( std::shared_ptr< std::vector< std::shared_ptr<Polyhedron_domain> > > _poly_domains )
+  {
+    m_poly_domains = std::move(_poly_domains);
+  }
+
   //
   // The bounding box of the Hybrid_domain is the union of bounding-boxes of the subdomains.
   //
   CGAL::Bbox_3 bbox() const {
-    CGAL::Bbox_3 hybrid_domain_bbox( m_image_domain.bbox() );
+    CGAL::Bbox_3 hybrid_domain_bbox;
+ 
+    if( m_image_domain )
+    {
+        hybrid_domain_bbox += m_image_domain->bbox();
+    }    
 
     // add electrode Bboxes to Label_image_domain Bbox
-    std::for_each( m_poly_domains.begin(),
-                   m_poly_domains.end(),
-                   [&hybrid_domain_bbox] (Polyhedron_domain* _domain) { 
-                        hybrid_domain_bbox + _domain->bbox();
-                 });
-    
-    return hybrid_domain_bbox;
+    if( m_poly_domains )
+    {
+        std::for_each( m_poly_domains->begin(),
+                       m_poly_domains->end(),
+                       [&hybrid_domain_bbox] (std::shared_ptr<Polyhedron_domain> _domain) { 
+                         hybrid_domain_bbox += _domain->bbox();
+                  });
     }
+
+    return hybrid_domain_bbox;
+  }
 
   //
   // Initiate seeding in all subdomains.
@@ -111,40 +135,65 @@ public:
   struct Construct_initial_points
   {
     Construct_initial_points(const Hybrid_domain& _domain) :
-        r_domain_( _domain ) {}
+        r_domain_( _domain ) 
+    { }
     
     template<class OutputIterator>
     OutputIterator operator()(OutputIterator pts, const int n = 100) const
     {
-        int numPointsToConstructPerSubdomain = n / ( r_domain_.m_poly_domains.size() + 1 );
-        // due to integer rounding n != totalPointToConstruct might be possible
-        int totalPointToConstruct = numPointsToConstructPerSubdomain * ( r_domain_.m_poly_domains.size() + 1 );
+        //std::cout << "InitialPoints] : " << r_domain_m_image_domain << std::endl;
+        
+        int numSubDomains = (r_domain_.m_poly_domains ? r_domain_.m_poly_domains->size() : 0 ) + 
+                            (r_domain_.m_image_domain ? 1 : 0 );
+
+        int numPointsToConstructPerSubdomain = n / numSubDomains;
+        // due to integer rounding n != totalPointsToConstruct might be possible
+        int totalPointsToConstruct = numPointsToConstructPerSubdomain * numSubDomains;
 
         // construct initial seed points on image domain
-        typedef Image_domain::Index Image_Domain_Index;
-        std::vector< std::pair<Point_3, Image_Domain_Index> > image_domain_points_vector;
-        Image_domain::Construct_initial_points cstr_image_domain_initial_points 
-            = r_domain_.m_image_domain.construct_initial_points_object();  // assign the remaining points to the image domain
-        cstr_image_domain_initial_points( std::back_inserter( image_domain_points_vector ), numPointsToConstructPerSubdomain + (n - totalPointToConstruct));
-
-        for( std::size_t i = 0, end = image_domain_points_vector.size(); i < end; i++ ) 
+        if( r_domain_.m_image_domain )
         {
-            *pts++ = std::make_pair( image_domain_points_vector[i].first, 2 );
-        }
-        // construct inital seed points on all polyhedral domains
-        for( std::size_t d = 0; d < r_domain_.m_poly_domains.size(); d++)
-        {
-            Polyhedron_domain *poly_domain = r_domain_.m_poly_domains.at(d);
+            typedef Image_domain::Index Image_Domain_Index;
+            std::vector< std::pair<Point_3, Image_Domain_Index> > image_domain_points_vector;
+            
+            Image_domain::Construct_initial_points cstr_image_domain_initial_points 
+                = r_domain_.m_image_domain->construct_initial_points_object();  
+            
+            cstr_image_domain_initial_points
+            ( 
+                std::back_inserter( image_domain_points_vector ), 
+                numPointsToConstructPerSubdomain + (n - totalPointsToConstruct) // assign the remaining points to the image domain
+            );
 
-            typedef Polyhedron_domain::Index Poly_Domain_Index;
-            std::vector< std::pair< Point_3, Poly_Domain_Index > > poly_domain_points_vector;
-            Polyhedron_domain::Construct_initial_points cstr_poly_domain_initital_points
-                = poly_domain->construct_initial_points_object();    
-            cstr_poly_domain_initital_points( std::back_inserter( poly_domain_points_vector ), numPointsToConstructPerSubdomain );
-    
-            for( std::size_t i = 0, end = poly_domain_points_vector.size(); i < end; i++ )
+            for( std::size_t i = 0, end = image_domain_points_vector.size(); i < end; i++ ) 
             {
-                *pts++ = std::make_pair( poly_domain_points_vector[i].first, 1 );
+                *pts++ = std::make_pair( image_domain_points_vector[i].first, 2 );
+            }
+        }
+
+        // construct inital seed points on all polyhedral domains
+        // In the vector of sub-domains, the first subdomain is the skin surface
+        // and the last two subdomains are the electrodes. We must not generated
+        // seed point on these three surface, because their seeds are already defined
+        // by the feature edges + any additional seed might intersect their protecting
+        // balls.
+        // Therefore, we only generate seed points for surfaces 1 to (n-2), if present.
+        if( r_domain_.m_poly_domains )
+        {
+            for( std::size_t d = (r_domain_.m_poly_domains->size() >= 3 ? 1 : 0); d < r_domain_.m_poly_domains->size() - 2; d++)
+            {
+                std::shared_ptr<Polyhedron_domain> poly_domain = r_domain_.m_poly_domains->at(d);
+
+                typedef Polyhedron_domain::Index Poly_Domain_Index;
+                std::vector< std::pair< Point_3, Poly_Domain_Index > > poly_domain_points_vector;
+                Polyhedron_domain::Construct_initial_points cstr_poly_domain_initital_points
+                    = poly_domain->construct_initial_points_object();    
+                cstr_poly_domain_initital_points( std::back_inserter( poly_domain_points_vector ), numPointsToConstructPerSubdomain );
+        
+                for( std::size_t i = 0, end = poly_domain_points_vector.size(); i < end; i++ )
+                {
+                    *pts++ = std::make_pair( poly_domain_points_vector[i].first, 1 );
+                }
             }
         }
 
@@ -170,34 +219,41 @@ public:
 
     boost::optional< Subdomain_index > operator()(const Kernel::Point_3& p) const
     {
-        boost::optional<Subdomain_index> subdomain_index = 
-            r_domain_.m_image_domain.is_in_domain_object()(p);
-        
-        // contains a value if we are in a subdomain of the image domain
-        if( subdomain_index ) 
-        {
-            return subdomain_index;
+        boost::optional<Subdomain_index> subdomain_index;
+
+        if( r_domain_.m_image_domain )
+        { 
+            subdomain_index = r_domain_.m_image_domain->is_in_domain_object()(p);
         }
+
         // if not in image domain check if in polyhedral_domain
-        else
+        
+        if( r_domain_.m_poly_domains )
         {
-            for(std::size_t d = 0; d < r_domain_.m_poly_domains.size(); d++)
-            {
-                Polyhedron_domain *poly_domain = r_domain_.m_poly_domains.at(d);
-
-                boost::optional<Subdomain_index> poly_domain_index = 
-                    poly_domain->is_in_domain_object()(p);
-
-                // return index of polyhedral domain (+100 to separate indices from image-subdomain indices)
-                if( poly_domain_index )
+            if( ! subdomain_index )
+            {   // Assuming that the surfaces (if nested) are ordered from outmost to innermost:
+                // We start testing the outmost surface. Regardless if the query was successful or not,
+                // we do not immediately return but rather check the inner surfaces as well. This way,
+                // the index of the last (most inner) surface the query point is located in is returned.
+                for(std::size_t d = 0; d < r_domain_.m_poly_domains->size(); d++)
                 {
-                    return 100 + d;
+                    std::shared_ptr<Polyhedron_domain> poly_domain = r_domain_.m_poly_domains->at(d);
+
+                    boost::optional<Subdomain_index> poly_domain_index = 
+                        poly_domain->is_in_domain_object()(p);
+
+                    // return index of polyhedral domain (+100 to separate indices from image-subdomain indices)
+                    if( poly_domain_index )
+                    {
+                        subdomain_index = 100 + d;
+                    }
                 }
             }
         }
 
-        // return empty subdomain_index indicating that the query point is neither in the
-        // Label_image_domain nor in one of the Polyhedron_domains
+        // If neither the Label_image_domain nor the polyhedron domains contained the point,
+        // the return value is empty (boost::optional). Else, the value contains the index
+        // of the respective subdomain. 
         return subdomain_index;
     }
 
@@ -216,40 +272,45 @@ public:
   {
     Construct_intersection(const Hybrid_domain& domain) :
         r_domain_(domain)
-    {}
+    { }
 
     template <typename Query>    // Query can be a Segment_3, Ray_3, Line_3
     Intersection operator()(const Query& query) const
     {
         using boost::get;
         
-        // intersection with image domain
-        Image_domain::Intersection image_domain_intersec =
-            r_domain_.m_image_domain.construct_intersection_object()(query);
-
-        // if intersection was found, return it 
-        if( get<2>(image_domain_intersec) != 0)
+        if( r_domain_.m_image_domain )
         {
-            return Intersection(get<0>(image_domain_intersec), 2, get<2>(image_domain_intersec));
+            // intersection with image domain
+            Image_domain::Intersection image_domain_intersec =
+                r_domain_.m_image_domain->construct_intersection_object()(query);
+
+            // if intersection was found, return it 
+            if( get<2>(image_domain_intersec) != 0)
+            {
+                return Intersection(get<0>(image_domain_intersec), 2, get<2>(image_domain_intersec));
+            }
         }
 
-
-        for(std::size_t d = 0; d < r_domain_.m_poly_domains.size(); d++)
+        if( r_domain_.m_poly_domains )
         {
-            Polyhedron_domain *poly_domain = r_domain_.m_poly_domains.at(d);
-
-            // interpolation with polyhedral domain
-            Polyhedron_domain::Intersection poly_domain_intersec =
-                poly_domain->construct_intersection_object()(query);
-
-            // if intersection was found return it
-            if( get<2>(poly_domain_intersec) != 0)
+            for(std::size_t d = 0; d < r_domain_.m_poly_domains->size(); d++)
             {
-                const Point_3 inter_point = get<0>(poly_domain_intersec);
-                
-                if( !r_domain_.m_image_domain.is_in_domain_object()(inter_point) )
-                {    
-                    return Intersection( inter_point, 1, get<2>(poly_domain_intersec) );
+                std::shared_ptr<Polyhedron_domain> poly_domain = r_domain_.m_poly_domains->at(d);
+
+                // interpolation with polyhedral domain
+                Polyhedron_domain::Intersection poly_domain_intersec =
+                    poly_domain->construct_intersection_object()(query);
+
+                // if intersection was found return it
+                if( get<2>(poly_domain_intersec) != 0)
+                {
+                    const Point_3 inter_point = get<0>(poly_domain_intersec);
+                    
+                    if( !r_domain_.m_image_domain || !r_domain_.m_image_domain->is_in_domain_object()(inter_point) )
+                    {
+                        return Intersection( inter_point, 1, get<2>(poly_domain_intersec) );
+                    }
                 }
             }
         }
@@ -316,6 +377,7 @@ int main(int argc, char*argv[])
              *smoothskinfile = nullptr;
 
   std::vector<std::string> electrodepaths;
+  std::vector<std::string> tissuesurfaces_paths;
  
   float faceAngBound   = 30.f,
         faceSizeBound  = 6.f,
@@ -329,8 +391,8 @@ int main(int argc, char*argv[])
   int option_index = 0;
   static struct option long_options[] = {
     {"imagefile", 1, NULL, 0},        // name, has_arg (1=required, 2=optional), flag, val
-    {"smoothskinfile", 1, NULL, 0},
     {"electrodefiles", 1, NULL, 0},
+    {"tissuesurfaces", 1, NULL, 0},
     {"outfile", 1, NULL, 0},
     {"f_angbound", 1, NULL, 0},
     {"f_sizebound", 1, NULL, 0},
@@ -355,17 +417,24 @@ int main(int argc, char*argv[])
                 imagefile = optarg;    
             break;
 
-            case 1: // smooth skin surface file
-                smoothskinfile = optarg;
-            break;
-
-            case 2: // electrode files
+            case 1: // electrode files
             {
                 std::istringstream electrodes_string( optarg );
                 std::string path;
                 for( std::size_t p = 0; std::getline(electrodes_string, path, ',' ); p++ )
                 {
                     electrodepaths.push_back( path );
+                }
+            }
+            break;
+
+            case 2: // additional surface files (of other tissues inside the head model)
+            {
+                std::istringstream tissuesurfaces_string( optarg );
+                std::string path;
+                for( std::size_t s = 0; std::getline( tissuesurfaces_string, path, ','); s++ )
+                {
+                    tissuesurfaces_paths.push_back( path );
                 }
             }
             break;
@@ -402,16 +471,17 @@ int main(int argc, char*argv[])
      }
    }
 
-  if( !imagefile || !outfile ) 
+  if( !outfile ) 
   {
-    std::cerr << "Imagefile and outfile must be specified!" << std::endl;
-    return 1;
+    std::cerr << "Outfile must be specified!" << std::endl;
+    return EXIT_FAILURE;
   }
 
  std::cout << "Starting volume mesh using the following parameters: \n"    
-           << "\t imagefile = " << imagefile << "\n"
-           << "\t smoothskinfile = " << ( smoothskinfile ? smoothskinfile : "none provided" ) << "\n"
-           << "\t electrodes = ";
+           << "\t imagefile = " << ( imagefile ? imagefile : "none provided" ) << "\n"
+           << "\t tissuesurfaces = ";
+ std::for_each(tissuesurfaces_paths.begin(), tissuesurfaces_paths.end(), [](std::string &path){std::cout << path << " ";});
+ std::cout << "\n\t electrodes = ";
  std::for_each(electrodepaths.begin(), electrodepaths.end(), [](std::string &path){std::cout << path << " ";});
  std::cout << "\n\t outfile = " << outfile << "\n"
            << "\t faceAngBound = " << faceAngBound << "\n"
@@ -425,63 +495,95 @@ int main(int argc, char*argv[])
            << "\t use exude mesh = " << (exude == 1 ? "yes" : "no") << std::endl;
 
   // ************* Read the input files *****************
-    // 1) Load the segmentation image
-    // possible input format:
-    //     ANALYZE-image format (hdr + img file) in unsigned byte format, NOT short or unsigned int
-    //  Why Byte? Because:
-    //  By default, the class template `CGAL::Labeled_image_mesh_domain_3` only deals with
-    //  labelized image whose data type is 8 bits (signed or not, that makes no difference). 
-  CGAL::Image_3 image;
-  if( !image.read(imagefile) )
-  {
-    std::cerr << "Error: Cannot read file " <<  imagefile << std::endl;
-    return EXIT_FAILURE;
-  }
 
-    // 2) Load surfaces (electrodes and optionally smoothskin)
+    // 1) Load surfaces (electrodes and optional tissues surfaces)
     // possible input format:
     //    OFF (object file format), both binary or ASCII
-  size_t num_surface_files = electrodepaths.size() + ( smoothskinfile != nullptr );
-  std::vector<Polyhedron_domain*> polydomains; // Polyherdron_domain as pointer to avoid copying
-  std::vector<Polyhedron> polyhedrons( num_surface_files );  // we may have to represent skin as a polyhedron too, 
-                                                            // but its features should not be preserved,
-                                                            // i.e. it does not have any since its supposed to be *smooth*
+  size_t num_surface_files = electrodepaths.size() + tissuesurfaces_paths.size();
+  std::shared_ptr< std::vector< std::shared_ptr<Polyhedron_domain> > > polydomains_ptr( new std::vector< std::shared_ptr<Polyhedron_domain> >() ); 
+  std::vector<Polyhedron> polyhedrons( num_surface_files );  // we may have to represent other tissues as polyhedra too, 
+                                                             // but their features should not be preserved,
+                                                             // i.e. they do not have any since they are supposed to be *smooth*
+  
   std::vector<Polyhedron>::iterator current_poly_it = polyhedrons.begin();
   
-  // prepare data structures for feature detection
-    // a vector of lists of corners of a poly_domain (one list per poly_domain)
-  std::vector< std::vector< std::pair<Polyhedron_domain::Corner_index,Kernel::Point_3> > > corners( electrodepaths.size() );    
-    // a vector of lists of curves of a poly_domain (one list per poly_domain)
-  std::vector< std::vector< CGAL::cpp11::tuple<Curve_index, std::pair<Kernel::Point_3,Domain::Index>, std::pair<Kernel::Point_3,Domain::Index> > > > curves( electrodepaths.size() ); 
-
-  // load smooth skin surface (if provided) 
-  if( smoothskinfile )
+  // load inner surfacs
+  for( std::size_t s = 0; s < tissuesurfaces_paths.size(); current_poly_it++, s++)
   {
-    if( ! createPolyhedronFromOFF( smoothskinfile, *current_poly_it ) ) return EXIT_FAILURE;
-    polydomains.push_back( new Polyhedron_domain( *current_poly_it ) );
-    current_poly_it++;
+    if( ! createPolyhedronFromOFF( tissuesurfaces_paths.at( s ).c_str(), *current_poly_it ) ) return EXIT_FAILURE;
+    
+    // create new Polyhedron_domain and store     // Polyhedron_domain has a call by reference construtcor
+    polydomains_ptr->push_back( std::make_shared<Polyhedron_domain>( *current_poly_it ) );
   }
 
   // load electrode surfaces
+    // prepare data structures for feature detection:
+    // 1) a vector of lists of corners of a poly_domain (one list per poly_domain)
+  std::vector< std::vector< std::pair<Polyhedron_domain::Corner_index,Kernel::Point_3> > > corners( electrodepaths.size() );    
+    // 2) a vector of lists of curves of a poly_domain (one list per poly_domain)
+  std::vector< std::vector< CGAL::cpp11::tuple<Curve_index, std::pair<Kernel::Point_3,Domain::Index>, std::pair<Kernel::Point_3,Domain::Index> > > > curves( electrodepaths.size() ); 
   for( std::size_t p = 0; current_poly_it != polyhedrons.end(); current_poly_it++, p++ )
   {
     if( ! createPolyhedronFromOFF( electrodepaths.at( p ).c_str(), *current_poly_it ) ) return EXIT_FAILURE;
     
-    // create new Polyhedron_domain and store     // Polyhedron_domain has a call by reference construtcor
+    polydomains_ptr->push_back( std::make_shared<Polyhedron_domain>( *current_poly_it ) );
     
-    polydomains.push_back( new Polyhedron_domain( *current_poly_it ) );
     // Detect sharp features and boundaries of the polyhedral components of the complex, and insert them as features of the domain.
     // Parameter: The maximum angle (in degrees) between the two normal vectors of adjacent triangles.
     //        For an edge of the polyhedron, if the angle between the two normal vectors of its
     //        incident facets is bigger than the given bound, then the edge is considered as a
     //        feature edge, and inserted as a feature of the domain. Defaults to 60.  
-      polydomains.back()->detect_features( );
+    polydomains_ptr->back()->detect_features( );
+    
     // retrieve detected corners
-    polydomains.back()->get_corners( std::back_inserter( corners.at( p ) ) );
-    polydomains.back()->get_curves( std::back_inserter( curves.at( p ) ) );
+    polydomains_ptr->back()->get_corners( std::back_inserter( corners.at( p ) ) );
+    polydomains_ptr->back()->get_curves( std::back_inserter( curves.at( p ) ) );
   }
 
+    // extract the detected features of the electrodes 
+    // only the electrodes have feature edges, therefore, skip all other surfaces
+  std::vector< std::vector< Kernel::Point_3 > > featured_curves;
+  Curve_index last_curve_index;
+  std::vector< std::shared_ptr<Polyhedron_domain> >::iterator polydomain_it = polydomains_ptr->begin() + tissuesurfaces_paths.size();
+  
+  for( std::size_t p = 0; polydomain_it != polydomains_ptr->end();  p++, polydomain_it++ )
+  {    
+    // a vector of lists per domain of all of its curves
+    std::vector< CGAL::cpp11::tuple<Curve_index, std::pair<Kernel::Point_3,Domain::Index>, std::pair<Kernel::Point_3,Domain::Index> > > &curves_of_domain = curves.at( p );
+    
+    // loop over all detected curves
+    for( size_t l = 0 ; l < curves_of_domain.size(); l++)
+    {
+        std::vector< Kernel::Point_3> curve_polyline;    // a curve is a vector of Point_3s of the same curve index
+        CGAL::cpp11::tuple<Curve_index, std::pair<Kernel::Point_3,Domain::Index>, std::pair<Kernel::Point_3,Domain::Index> > &current_curve = curves_of_domain.at( l );
+        Curve_index ci = std::get<0>( current_curve );    // each element returned by 'get_curves' is a triple: (curve index, start pt of curve, end point of curve)
+                                                          // start & end point are pairs of Point3 and the associated point index
+                                                          // (i.e. to access Point3 object of the start point: std::get<1>( curves_of_domain.at( l ) ).first 
+        
+        // create points on the detected curve (equidistant 1 unit of measurement, but at least one point between start & end)
+        Kernel::Point_3 startPoint = std::get<1>( current_curve ).first;
+        Kernel::Point_3 endPoint   = std::get<2>( current_curve ).first;
+        float curve_length = (*polydomain_it)->curve_length( ci );
+        float step_size    = std::min(curve_length * 0.5f, 1.f);
 
+        curve_polyline.push_back( startPoint );    // since I found no way of obtainig the vertices of the curve, we sample the curve between the start and end point
+        for( float s = step_size; s < curve_length; s += step_size )
+        {
+            curve_polyline.push_back((*polydomain_it)->construct_point_on_curve( startPoint, ci, s ) );
+        }
+        curve_polyline.push_back( endPoint );
+
+        featured_curves.push_back( curve_polyline );
+    }
+  }
+
+  
+  // 2) Load the segmentation imagea
+  // possible input format:
+  //     ANALYZE-image format (hdr + img file) in unsigned byte format, NOT short or unsigned int
+  //  Why Byte? Because:
+  //  By default, the class template `CGAL::Labeled_image_mesh_domain_3` only deals with
+  //  labelized image whose data type is 8 bits (signed or not, that makes no difference). 
   // Image Domain:
   // A 3D labeled image is a grid of voxels, where each voxel is associated with an index (a subdomain index)
   // characterizing the subdomain in which the voxel lies. This class is a model of the concept MeshDomain_3.
@@ -501,50 +603,37 @@ int main(int argc, char*argv[])
   // 'e' is relative to the size of the domain:
   // "This error bound is given by e=d×bound where d is the length of the diagonal of the bounding box"
   //  Its (absolute) value should stay smaller than facet_size or cell_size and facet_distance. 
-  Image_domain image_domain(image, 1e-10);
-
-  // the Hybrid_domain
-  Domain domain( image_domain, polydomains );
-  std::vector< std::vector< Kernel::Point_3 > > featured_curves;
-  Curve_index last_curve_index;
-  size_t p;
-  std::vector<Polyhedron_domain*>::iterator polydomain_it;
-  for
-  ( p = 0, polydomain_it = ( smoothskinfile ? ++(polydomains.begin()) : polydomains.begin() ); // skip smooth-skin poly domain
-    polydomain_it != polydomains.end();
-    p++, polydomain_it++
-  )
-  {    
-    // a vector of lists per domain of all of its curves
-    std::vector< CGAL::cpp11::tuple<Curve_index, std::pair<Kernel::Point_3,Domain::Index>, std::pair<Kernel::Point_3,Domain::Index> > > &curves_of_domain = curves.at( p );
-    
-    // loop over all detected curves
-    for( size_t l = 0 ; l < curves_of_domain.size(); l++)
-      {
-        std::vector< Kernel::Point_3> curve_polyline;    // a curve is a vector of Point_3s of the same curve index
-        CGAL::cpp11::tuple<Curve_index, std::pair<Kernel::Point_3,Domain::Index>, std::pair<Kernel::Point_3,Domain::Index> > &current_curve = curves_of_domain.at( l );
-        Curve_index ci = std::get<0>( current_curve );    // each element returned by 'get_curves' is a triple: (curve index, start pt of curve, end point of curve)
-                                                        // start & end point are pairs of Point3 and the associated point index
-                                                        // (i.e. to access Point3 object of the start point: std::get<1>( curves_of_domain.at( l ) ).first 
-        
-        // create points on the detected curve (equidistant 1 unit of measurement, but at least one point between start & end)
-        Kernel::Point_3 startPoint = std::get<1>( current_curve ).first;
-        Kernel::Point_3 endPoint   = std::get<2>( current_curve ).first;
-        float curve_length = (*polydomain_it)->curve_length( ci );
-        float step_size    = std::min(curve_length * 0.5f, 1.f);
-        //std::cout << "Electrode #" << p << ", curve length = " << curve_length << std::endl;
-
-        curve_polyline.push_back( startPoint );    // since I found no way of obtainig the vertices of the curve, we sample the curve between the start and end point
-        for( float s = step_size; s < curve_length; s += step_size )
-        {
-            curve_polyline.push_back((*polydomain_it)->construct_point_on_curve( startPoint, ci, s ) );
-        }
-        curve_polyline.push_back( endPoint );
-
-        featured_curves.push_back( curve_polyline );
-    }
+  CGAL::Image_3 image;
+  std::shared_ptr< Image_domain> image_domain_ptr(nullptr);
+  if( !image.read(imagefile) )
+  {
+      std::cerr << "Error: Cannot read file " <<  imagefile << std::endl;
+      return EXIT_FAILURE;
   }
-  domain.add_features( featured_curves.begin(), featured_curves.end() );
+  else
+  {
+      image_domain_ptr = std::make_shared< Image_domain >
+      ( 
+          Image_domain::create_labeled_image_mesh_domain
+          ( 
+              CGAL::parameters::image=image, 
+              CGAL::parameters::relative_error_bound=1e-10
+          )
+      );
+  }
+
+  // ********* Assemble the the hybrid domain for mashing **********
+  Domain domain;
+  if( imagefile )
+  {
+    domain.Set_ImageDomain( image_domain_ptr );
+  }
+
+  if( num_surface_files > 0 )
+  {
+     domain.Set_PolyDomains( polydomains_ptr ); 
+     domain.add_features( featured_curves.begin(), featured_curves.end() );
+  }
 
   // ************** Meshing Generation *******************
   std::chrono::high_resolution_clock::time_point t_start; 
@@ -598,7 +687,49 @@ int main(int argc, char*argv[])
                          cell_radius_edge_ratio=cellREratio,
                          cell_size=cellSizeBound);    
   t_start = tic();
-  C3t3 c3t3 = CGAL::make_mesh_3<C3t3>(domain, criteria, features(), no_perturb(), no_exude(), no_lloyd(), no_odt());
+  //  from: http://cgal-discuss.949826.n4.nabble.com/make-mesh-3-with-features-initial-points-for-C3T3-td4661118.html#a4661123
+  //    - 'construct_initial_points' of the domain is not called in make_mesh_3 when the domain exhibits features
+  //    - The reason for this behavior is that the points returned by the functot 'construct_initial_points'
+  //      might be in the set of protecting balls of features or close to that set.
+  //        from: https://doc.cgal.org/latest/Mesh_3/index.html#title4
+  //        -> If a domain has 1-dimensional exposed features (i.e. lines), the method of protecting balls is used to achieve
+  //           an accurate representation of those features in the mesh and to guarantee that the refinement process
+  //           terminates whateber may be the dihedral angles formed by input surface patches incident to a given
+  //           1D-feature or the angles formed by two 1D-features incident to a 0D-feature (i.e. a point).
+  //        -> According to this method, the 1D-features are sampled with poins and covered by protecting balls centered on
+  //           the sample points, in such a way that:
+  //            a) no balls intersect
+  //            b) no pair of balls centered in different 1D-features intersect
+  //        -> The triangulation embedding the mesh is in fact a weighted Delaunay triangulation, and the triangulation is
+  //           initialized by the insertion of all the protecting balls, regarded as weighted points. The Delaunay refinement
+  //           proecess is then launched as before except that refinement points are no longer circumcenteres but are weighted
+  //           circumcenters. All Steiner vertices inserted by the refinement process are given a zero weight. The method
+  //           guarantees: a) that each segment joining two successive centers on a 1D-feature will stay in the triangulation,
+  //           thus ensuring an accurate approximatino of the 1D-features; b) that the refinement process will never try to
+  //           insert a refinement point in the union of the protecting balls, which ensures the termination of the refinement
+  //           process.
+  //   - Here, we call the 'construct_initial_points' method of the Hybrid domain and insert the returned points manually
+  //     to the triangulation as seed points.
+  typedef Hybrid_domain::Index Hybrid_Domain_Index;
+  typedef C3t3::Triangulation::Point Weighted_point; 
+  std::vector< std::pair< Kernel::Point_3, Hybrid_Domain_Index> > hybriddomain_seedpts_vector;
+  C3t3 c3t3;
+    // undocumented API function: initialize empty triangulation with a domain with features
+  CGAL::Mesh_3::internal::init_c3t3_with_features( c3t3, domain, criteria );
+    // generate seed points in out hybrid domain
+  Hybrid_domain::Construct_initial_points cstr_hybrid_domain_initial_points =
+    domain.construct_initial_points_object(); 
+  cstr_hybrid_domain_initial_points( std::back_inserter( hybriddomain_seedpts_vector ), 100 ); 
+    // assing the seed points (on the surface of the subdomains, hence 2D) to the empty triangulation
+  for( std::size_t hp = 0, end = hybriddomain_seedpts_vector.size(); hp < end; ++hp )
+  {
+    const Weighted_point p( Weighted_point::Point( hybriddomain_seedpts_vector[ hp ].first ) );
+    Tr::Vertex_handle vh = c3t3.triangulation().insert(p);
+    c3t3.set_dimension( vh, 2 );
+  }
+    // start Delaunay triangulation using the provided seed points
+  CGAL::refine_mesh_3<C3t3>( c3t3, domain, criteria, no_perturb(), no_exude(), no_lloyd(), no_odt() );
+
   t_end = tic();
   printDuration( t_start, t_end );
 
@@ -739,15 +870,17 @@ int main(int argc, char*argv[])
     std::string name("Physical Volume ");
     name.append( std::to_string(ctr) );
     (*region)->addPhysicalEntity( m->setPhysicalName(name,3) );
-      ctr++;
+    ctr++;
   }
+
+  std::cout << "number of Physical Volumes: " << ctr << std::endl;
 
   // OpenFOAM interprets Physical Surfaces as patches
   // However patches are only valid to occur on the boundary of the
   // domain, not inside. Therefore only for the electrodes a
   // definition of Physical Surfaces is valid.
   ctr = ctr - electrodepaths.size();
-  //std::cout << "#physicals = " << m->numPhysicalNames() << ", #polys = " << polydomains.size() << ", counter = " << ctr << std::endl;
+  
   for(auto face = m->firstFace(); face != m->lastFace(); face++)
   {
     
@@ -756,7 +889,7 @@ int main(int argc, char*argv[])
         std::string name("Electrode ");
         name.append( std::to_string( electrode_ctr ) );
         (*face)->addPhysicalEntity( m->setPhysicalName( name,2 ) );
-          electrode_ctr++;
+        electrode_ctr++;
     }
 
     // we skip the first surfaces, because we know that the
@@ -766,11 +899,11 @@ int main(int argc, char*argv[])
   }
   m->writeMSH( outfile );
  
+
   // cleanup 
   delete m;
   GmshFinalize();
   std::remove("temp.msh");
-  std::for_each( polydomains.begin(), polydomains.end(), [](Polyhedron_domain *pd){delete pd;});
 
   return EXIT_SUCCESS;
 }
@@ -780,7 +913,9 @@ void printHelpText()
     std::cout << "This tool computes a tetrahedral 3D volume mesh based on a segmented input image.\n"
               << "Usage: ./volmesh [parameters], with the following parameters\n"
               << "\t --imagefile ... path to input segmentation image file, a labelled voxel image\n"
-              << "\t --electrodefiles ... path to input electrode surface files, an OFF surface description\n"
+              << "\t --electrodefiles ... comma-separated paths to input electrode surface files, an OFF surface description\n"
+              << "\t --tissuesurfaces ... comma separated paths to input surface descriptions of other tissues,\n"
+              << "\t\t\t      ! The sequence of the provided surface paths must begin with the most outer surface to the most inner surface \n"
               << "\t --outfile ... name of output file/path\n"
               << "\t --f_angbound ... minimum (inner) angle of a surface triangle\n"
               << "\t --f_sizebound ... maximum size of a surface triangle\n"
@@ -790,15 +925,16 @@ void printHelpText()
               << "\t --lloyd ... optimize mesh using the lloyd algorithm\n"
               << "\t --odt ... optimize mesh using the odt algorithm\n"
               << "\t --perturb ... eliminate bad triangles by perturbating the mesh \n"
-              << "\t --exude ... exude slivers" << std::endl;
+              << "\t --exude ... exude slivers \n" 
+              << "\t --help ... print this help text" << std::endl;
 }
 
 bool createPolyhedronFromOFF( const char *_path, Polyhedron &_poly )
 {
     // read the OFF file containing the surface description of the electrode
-      std::ifstream off_input(_path, std::ifstream::in);
-      if( !off_input.is_open() )
-      {
+    std::ifstream off_input(_path, std::ifstream::in);
+    if( !off_input.is_open() )
+    {
         std::cout << "Cannot access surface file!" << std::endl;
           return false;
     }

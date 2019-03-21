@@ -4,3 +4,4 @@ cmake_install.cmake
 Makefile
 deploy/gmsh-3.0.6-source
 deploy/meshHeadModel
+*.swp
