@@ -360,7 +360,14 @@ typedef CGAL::Mesh_domain_with_polyline_features_3<Hybrid_domain> Domain;
 //
 // Define the type of triangulation
 //
-typedef CGAL::Mesh_triangulation_3<Domain>::type Tr;
+#ifdef CGAL_CONCURRENT_MESH_3
+typedef CGAL::Parallel_tag Concurrency_tag;
+#else
+typedef CGAL::Sequential_tag Concurrency_tag;
+#endif
+
+
+typedef CGAL::Mesh_triangulation_3<Domain,CGAL::Default,Concurrency_tag>::type Tr;
 typedef CGAL::Mesh_complex_3_in_triangulation_3<Tr> C3t3;
 
 //
