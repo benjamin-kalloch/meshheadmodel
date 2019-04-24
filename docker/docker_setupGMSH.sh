@@ -9,4 +9,4 @@ docker run               \
 	--name=ubuntu        \
 	-v $BASE_DIR:/shares \
 	$CONTAINER_NAME      \
-	bash -c "cd /shares/ && cmake . && make VERBOSE=1"	
+	bash -c "ls -l /shares && cd /shares/deploy/gmsh-3.0.6-source/ && mkdir build_lib && cd build_lib && cmake -DDEFAULT=0 -DENABLE_PARSER=1 -DENABLE_BUILD_DYNAMIC=1 .. && make -j"	
