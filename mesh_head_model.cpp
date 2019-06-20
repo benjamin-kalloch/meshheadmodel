@@ -13,6 +13,7 @@
 
 #include <CGAL/ImageIO/analyze.h>
 #include <CGAL/IO/Polyhedron_iostream.h>
+#include <CGAL/IO/File_tetgen.h>
 
 #include <CGAL/make_mesh_3.h>
 #include <CGAL/odt_optimize_mesh_3.h>
@@ -32,13 +33,16 @@
 #include <getopt.h>      // use GNU extension of getopt to be able to parse more readable multi-character options
 #include <vector>
 
+#include <gmsh.h>
+
+/*
 #include "Gmsh.h"
 #include "GModel.h"
 #include "GEntity.h"
 #include "MTetrahedron.h"
 #include "MTriangle.h"
 #include "MElement.h"
-
+*/
 
 typedef int Curve_index;
 
@@ -861,55 +865,61 @@ int main(int argc, char*argv[])
 
   // Output - Medit | MESH (temporary output)
   std::ofstream meditFile("temp.mesh");
-  c3t3.output_to_medit( meditFile );
-  meditFile.close();
+    // Output to medit-file format only working properly in most recent version of
+    // CGAL 4.13.1 (not included in Ubuntu 19.04). Boundary surfaces are consitently
+    // oriented in this fixed version. Note: I had to reverse the vertex order to get
+    // outward oriented normals for all surfaces (File_medit.h, line: 837)
+    // https://github.com/CGAL/cgal/issues/3566
+    // https://github.com/CGAL/cgal/pull/3567/files
+    // https://github.com/CGAL/cgal/pull/3567/files
+  CGAL::output_to_medit( meditFile, c3t3, false, false );
+  
+  
+   //c3t3.output_to_medit( meditFile );
+   meditFile.close();
 
   // Output - gmsh | MSH
-  GmshInitialize( );
-  GModel *m = new GModel();
-  m->readMESH( "temp.mesh"  );
+  gmsh::initialize();
+  gmsh::option::setNumber("General.Terminal", 1);
+  gmsh::option::setNumber("Mesh.MshFileVersion", 2.2);
+  gmsh::open( "temp.mesh" );
 
-  // Mark all volumes as physical volumes.
-  // Then they will be recognized as CellGroups in OpenFOAM. 
-  int ctr = 0, electrode_ctr = 0;
-  for(auto region = m->firstRegion(); region != m->lastRegion(); region++)
+  std::vector<std::string> model_names;
+  gmsh::model::list( model_names );
+
+
+  gmsh::vectorpair model_volumes;
+  gmsh::vectorpair model_surfaces;
+  gmsh::model::getEntities( model_volumes, 3 );
+  gmsh::model::getEntities( model_surfaces, 2 );
+
+  std::vector<int> physical_group_tags;
+  physical_group_tags.reserve( model_volumes.size() + model_surfaces.size() ); // reserve but do not allocate
+
+  std::cout << "Model contains  " << model_volumes.size() << " volumes." << std::endl;
+  int ctr = 0;
+  for( std::pair<int,int> volume : model_volumes )
   {
-    std::string name("Physical Volume ");
-    name.append( std::to_string(ctr) );
-    (*region)->addPhysicalEntity( m->setPhysicalName(name,3) );
-    ctr++;
+      std::vector<int> tag { volume.second };   // first = dimension (3 for volume)
+      std::string group_name("Volume ");
+      physical_group_tags.push_back( gmsh::model::addPhysicalGroup(volume.first, tag, ctr) );
+      group_name.append( std::to_string( ctr ) );
+      //gmsh::model::setPhysicalName( volume.first, physical_group_tags.back(), group_name );
+      ctr++;
   }
 
-  std::cout << "number of Physical Volumes: " << ctr << std::endl;
-
-  // OpenFOAM interprets Physical Surfaces as patches
-  // However patches are only valid to occur on the boundary of the
-  // domain, not inside. Therefore only for the electrodes a
-  // definition of Physical Surfaces is valid.
-  ctr = ctr - electrodepaths.size();
-  
-  for(auto face = m->firstFace(); face != m->lastFace(); face++)
+  ctr = 0;
+  for( std::pair<int,int> surface : model_surfaces )
   {
-    
-    if( ctr <= 0 )
-    {
-        std::string name("Electrode ");
-        name.append( std::to_string( electrode_ctr ) );
-        (*face)->addPhysicalEntity( m->setPhysicalName( name,2 ) );
-        electrode_ctr++;
-    }
-
-    // we skip the first surfaces, because we know that the
-    // electrodes are always the last surface (since we assigned
-    // a subdomain index > 100 to them)
-    ctr--;
+      std::vector<int> tag { surface.second };   // first = dimension (2 for surface)
+      std::string group_name("Surface ");
+      physical_group_tags.push_back( gmsh::model::addPhysicalGroup(surface.first, tag, ctr + 1000) );
+      group_name.append( std::to_string( ctr + 1000 ) );
+      //gmsh::model::setPhysicalName( surface.first, physical_group_tags.back(), group_name );
+      ctr++;
   }
-  m->writeMSH( outfile );
- 
 
-  // cleanup 
-  delete m;
-  GmshFinalize();
+  gmsh::write( outfile );
   std::remove("temp.msh");
 
   return EXIT_SUCCESS;
