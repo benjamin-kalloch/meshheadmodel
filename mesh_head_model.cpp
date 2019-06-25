@@ -184,7 +184,9 @@ public:
         // Therefore, we only generate seed points for surfaces 1 to (n-2), if present.
         if( r_domain_.m_poly_domains )
         {
-            for( std::size_t d = (r_domain_.m_poly_domains->size() >= 3 ? 1 : 0); d < r_domain_.m_poly_domains->size() - 2; d++)
+            // @TODO: verify if this is necessary or whether we can remove this prior assumption on the input data...
+            //for( std::size_t d = (r_domain_.m_poly_domains->size() >= 3 ? 1 : 0); d < r_domain_.m_poly_domains->size() - 2; d++)
+            for( std::size_t d = 0; d < r_domain_.m_poly_domains->size(); d++)
             {
                 std::shared_ptr<Polyhedron_domain> poly_domain = r_domain_.m_poly_domains->at(d);
 
@@ -396,7 +398,7 @@ int main(int argc, char*argv[])
         cellREratio    = 3.f,
         cellSizeBound  = 8.f;
 
-  int use_lloyd = 0, use_odt = 0, perturb = 0, exude = 0;
+  int use_lloyd = 0, use_odt = 0, perturb = 0, exude = 0, export_simnibs_compatible = 0;
   
   int c;
   int option_index = 0;
@@ -415,6 +417,7 @@ int main(int argc, char*argv[])
     {"odt",0,&use_odt, 1},
     {"perturb",0,&perturb, 1},
     {"exude",0,&exude, 1},
+    {"simnibs",0,&export_simnibs_compatible, 1},
     {NULL, 0, NULL, 0}            // "The last element of the array must be filled with zeroes"
   };
                                             // no short options
@@ -503,7 +506,8 @@ int main(int argc, char*argv[])
            << "\t use lloy-optimization = " << (use_lloyd == 1 ? "yes" : "no") << "\n"
            << "\t use odt-optimization = " << (use_odt == 1 ? "yes" : "no") << "\n"
            << "\t use perturbate mesh = " << (perturb == 1 ? "yes" : "no") << "\n"
-           << "\t use exude mesh = " << (exude == 1 ? "yes" : "no") << std::endl;
+           << "\t use exude mesh = " << (exude == 1 ? "yes" : "no") << "\n"
+           << "\t export simnibs compatible = " << (export_simnibs_compatible == 1 ? "yes" : "no") << std::endl;
 
   // ************* Read the input files *****************
 
@@ -527,65 +531,68 @@ int main(int argc, char*argv[])
     polydomains_ptr->push_back( std::make_shared<Polyhedron_domain>( *current_poly_it ) );
   }
 
-  // load electrode surfaces
-    // prepare data structures for feature detection:
-    // 1) a vector of lists of corners of a poly_domain (one list per poly_domain)
-  std::vector< std::vector< std::pair<Polyhedron_domain::Corner_index,Kernel::Point_3> > > corners( electrodepaths.size() );    
-    // 2) a vector of lists of curves of a poly_domain (one list per poly_domain)
-  std::vector< std::vector< CGAL::cpp11::tuple<Curve_index, std::pair<Kernel::Point_3,Domain::Index>, std::pair<Kernel::Point_3,Domain::Index> > > > curves( electrodepaths.size() ); 
-  for( std::size_t p = 0; current_poly_it != polyhedrons.end(); current_poly_it++, p++ )
-  {
-    if( ! createPolyhedronFromOFF( electrodepaths.at( p ).c_str(), *current_poly_it ) ) return EXIT_FAILURE;
-    
-    polydomains_ptr->push_back( std::make_shared<Polyhedron_domain>( *current_poly_it ) );
-    
-    // Detect sharp features and boundaries of the polyhedral components of the complex, and insert them as features of the domain.
-    // Parameter: The maximum angle (in degrees) between the two normal vectors of adjacent triangles.
-    //        For an edge of the polyhedron, if the angle between the two normal vectors of its
-    //        incident facets is bigger than the given bound, then the edge is considered as a
-    //        feature edge, and inserted as a feature of the domain. Defaults to 60.  
-    polydomains_ptr->back()->detect_features( );
-    
-    // retrieve detected corners
-    polydomains_ptr->back()->get_corners( std::back_inserter( corners.at( p ) ) );
-    polydomains_ptr->back()->get_curves( std::back_inserter( curves.at( p ) ) );
-  }
-
-    // extract the detected features of the electrodes 
-    // only the electrodes have feature edges, therefore, skip all other surfaces
+  // load electrode surfaces with feature edges
   std::vector< std::vector< Kernel::Point_3 > > featured_curves;
-  Curve_index last_curve_index;
-  std::vector< std::shared_ptr<Polyhedron_domain> >::iterator polydomain_it = polydomains_ptr->begin() + tissuesurfaces_paths.size();
-  
-  for( std::size_t p = 0; polydomain_it != polydomains_ptr->end();  p++, polydomain_it++ )
-  {    
-    // a vector of lists per domain of all of its curves
-    std::vector< CGAL::cpp11::tuple<Curve_index, std::pair<Kernel::Point_3,Domain::Index>, std::pair<Kernel::Point_3,Domain::Index> > > &curves_of_domain = curves.at( p );
-    
-    // loop over all detected curves
-    for( size_t l = 0 ; l < curves_of_domain.size(); l++)
-    {
-        std::vector< Kernel::Point_3> curve_polyline;    // a curve is a vector of Point_3s of the same curve index
-        CGAL::cpp11::tuple<Curve_index, std::pair<Kernel::Point_3,Domain::Index>, std::pair<Kernel::Point_3,Domain::Index> > &current_curve = curves_of_domain.at( l );
-        Curve_index ci = std::get<0>( current_curve );    // each element returned by 'get_curves' is a triple: (curve index, start pt of curve, end point of curve)
-                                                          // start & end point are pairs of Point3 and the associated point index
-                                                          // (i.e. to access Point3 object of the start point: std::get<1>( curves_of_domain.at( l ) ).first 
+  if( electrodepaths.size() > 0 )
+  {
+        // prepare data structures for feature detection:
+        // 1) a vector of lists of corners of a poly_domain (one list per poly_domain)
+      std::vector< std::vector< std::pair<Polyhedron_domain::Corner_index,Kernel::Point_3> > > corners( electrodepaths.size() );    
+        // 2) a vector of lists of curves of a poly_domain (one list per poly_domain)
+      std::vector< std::vector< CGAL::cpp11::tuple<Curve_index, std::pair<Kernel::Point_3,Domain::Index>, std::pair<Kernel::Point_3,Domain::Index> > > > curves( electrodepaths.size() ); 
+      for( std::size_t p = 0; current_poly_it != polyhedrons.end(); current_poly_it++, p++ )
+      {
+        if( ! createPolyhedronFromOFF( electrodepaths.at( p ).c_str(), *current_poly_it ) ) return EXIT_FAILURE;
         
-        // create points on the detected curve (equidistant 1 unit of measurement, but at least one point between start & end)
-        Kernel::Point_3 startPoint = std::get<1>( current_curve ).first;
-        Kernel::Point_3 endPoint   = std::get<2>( current_curve ).first;
-        float curve_length = (*polydomain_it)->curve_length( ci );
-        float step_size    = std::min(curve_length * 0.5f, 1.f);
+        polydomains_ptr->push_back( std::make_shared<Polyhedron_domain>( *current_poly_it ) );
+        
+        // Detect sharp features and boundaries of the polyhedral components of the complex, and insert them as features of the domain.
+        // Parameter: The maximum angle (in degrees) between the two normal vectors of adjacent triangles.
+        //        For an edge of the polyhedron, if the angle between the two normal vectors of its
+        //        incident facets is bigger than the given bound, then the edge is considered as a
+        //        feature edge, and inserted as a feature of the domain. Defaults to 60.  
+        polydomains_ptr->back()->detect_features( );
+        
+        // retrieve detected corners
+        polydomains_ptr->back()->get_corners( std::back_inserter( corners.at( p ) ) );
+        polydomains_ptr->back()->get_curves( std::back_inserter( curves.at( p ) ) );
+      }
 
-        curve_polyline.push_back( startPoint );    // since I found no way of obtainig the vertices of the curve, we sample the curve between the start and end point
-        for( float s = step_size; s < curve_length; s += step_size )
+        // extract the detected features of the electrodes 
+        // only the electrodes have feature edges, therefore, skip all other surfaces
+      Curve_index last_curve_index;
+      std::vector< std::shared_ptr<Polyhedron_domain> >::iterator polydomain_it = polydomains_ptr->begin() + tissuesurfaces_paths.size();
+      
+      for( std::size_t p = 0; polydomain_it != polydomains_ptr->end();  p++, polydomain_it++ )
+      {    
+        // a vector of lists per domain of all of its curves
+        std::vector< CGAL::cpp11::tuple<Curve_index, std::pair<Kernel::Point_3,Domain::Index>, std::pair<Kernel::Point_3,Domain::Index> > > &curves_of_domain = curves.at( p );
+        
+        // loop over all detected curves
+        for( size_t l = 0 ; l < curves_of_domain.size(); l++)
         {
-            curve_polyline.push_back((*polydomain_it)->construct_point_on_curve( startPoint, ci, s ) );
-        }
-        curve_polyline.push_back( endPoint );
+            std::vector< Kernel::Point_3> curve_polyline;    // a curve is a vector of Point_3s of the same curve index
+            CGAL::cpp11::tuple<Curve_index, std::pair<Kernel::Point_3,Domain::Index>, std::pair<Kernel::Point_3,Domain::Index> > &current_curve = curves_of_domain.at( l );
+            Curve_index ci = std::get<0>( current_curve );    // each element returned by 'get_curves' is a triple: (curve index, start pt of curve, end point of curve)
+                                                              // start & end point are pairs of Point3 and the associated point index
+                                                              // (i.e. to access Point3 object of the start point: std::get<1>( curves_of_domain.at( l ) ).first 
+            
+            // create points on the detected curve (equidistant 1 unit of measurement, but at least one point between start & end)
+            Kernel::Point_3 startPoint = std::get<1>( current_curve ).first;
+            Kernel::Point_3 endPoint   = std::get<2>( current_curve ).first;
+            float curve_length = (*polydomain_it)->curve_length( ci );
+            float step_size    = std::min(curve_length * 0.5f, 1.f);
 
-        featured_curves.push_back( curve_polyline );
-    }
+            curve_polyline.push_back( startPoint );    // since I found no way of obtainig the vertices of the curve, we sample the curve between the start and end point
+            for( float s = step_size; s < curve_length; s += step_size )
+            {
+                curve_polyline.push_back((*polydomain_it)->construct_point_on_curve( startPoint, ci, s ) );
+            }
+            curve_polyline.push_back( endPoint );
+
+            featured_curves.push_back( curve_polyline );
+        }
+      }
   }
 
   
@@ -643,7 +650,10 @@ int main(int argc, char*argv[])
   if( num_surface_files > 0 )
   {
      domain.Set_PolyDomains( polydomains_ptr ); 
-     domain.add_features( featured_curves.begin(), featured_curves.end() );
+     if( featured_curves.size() > 0 )
+     {
+        domain.add_features( featured_curves.begin(), featured_curves.end() );
+     }
   }
 
   // ************** Meshing Generation *******************
@@ -727,11 +737,11 @@ int main(int argc, char*argv[])
   C3t3 c3t3;
     // undocumented API function: initialize empty triangulation with a domain with features
   CGAL::Mesh_3::internal::init_c3t3_with_features( c3t3, domain, criteria );
-    // generate seed points in out hybrid domain
+    // generate seed points in outer hybrid domain
   Hybrid_domain::Construct_initial_points cstr_hybrid_domain_initial_points =
     domain.construct_initial_points_object(); 
   cstr_hybrid_domain_initial_points( std::back_inserter( hybriddomain_seedpts_vector ), 100 ); 
-    // assing the seed points (on the surface of the subdomains, hence 2D) to the empty triangulation
+    // assign the seed points (on the surface of the subdomains, hence 2D) to the empty triangulation
   for( std::size_t hp = 0, end = hybriddomain_seedpts_vector.size(); hp < end; ++hp )
   {
     const Weighted_point p( Weighted_point::Point( hybriddomain_seedpts_vector[ hp ].first ) );
@@ -896,7 +906,6 @@ int main(int argc, char*argv[])
   std::vector<int> physical_group_tags;
   physical_group_tags.reserve( model_volumes.size() + model_surfaces.size() ); // reserve but do not allocate
 
-  std::cout << "Model contains  " << model_volumes.size() << " volumes." << std::endl;
   int ctr = 0;
   for( std::pair<int,int> volume : model_volumes )
   {
@@ -904,7 +913,10 @@ int main(int argc, char*argv[])
       std::string group_name("Volume ");
       physical_group_tags.push_back( gmsh::model::addPhysicalGroup(volume.first, tag, ctr) );
       group_name.append( std::to_string( ctr ) );
-      //gmsh::model::setPhysicalName( volume.first, physical_group_tags.back(), group_name );
+      if( ! export_simnibs_compatible )
+      {
+        gmsh::model::setPhysicalName( volume.first, physical_group_tags.back(), group_name );
+      }
       ctr++;
   }
 
@@ -915,7 +927,10 @@ int main(int argc, char*argv[])
       std::string group_name("Surface ");
       physical_group_tags.push_back( gmsh::model::addPhysicalGroup(surface.first, tag, ctr + 1000) );
       group_name.append( std::to_string( ctr + 1000 ) );
-      //gmsh::model::setPhysicalName( surface.first, physical_group_tags.back(), group_name );
+      if( ! export_simnibs_compatible )
+      {
+        gmsh::model::setPhysicalName( surface.first, physical_group_tags.back(), group_name );
+      }
       ctr++;
   }
 
@@ -943,6 +958,7 @@ void printHelpText()
               << "\t --odt ... optimize mesh using the odt algorithm\n"
               << "\t --perturb ... eliminate bad triangles by perturbating the mesh \n"
               << "\t --exude ... exude slivers \n" 
+              << "\t --simnibs ... export the mesh in a file format compatible to SimNIBS \n" 
               << "\t --help ... print this help text" << std::endl;
 }
 

@@ -10,7 +10,7 @@ set (volmesh_VERSION_MAJOR 1)
 set (volmesh_VERSION_MINOR 0)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/deploy)
-set(GMSH_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/gmsh-4.3.0-source/)
+set(GMSH_DIRECTORY /GMSH)
 set (CMAKE_CXX_STANDARD 17)	# for std::remove to work properly
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "/usr/share/cmake/Modules/")
@@ -38,7 +38,6 @@ if( CGAL_ACTIVATE_CONCURRENT_MESH_3 OR ENV{CGAL_ACTIVATE_CONCURRENT_MESH_3} )
     add_definitions( -DCGAL_CONCURRENT_MESH_3 )
     find_package( TBB REQUIRED )
     if( TBB_FOUND )
-        #include(/usr/lib/x86_64-linux-gnu/cmake/CGAL/UseTBB.cmake)
         include(/usr/local/lib/cmake/CGAL/UseTBB.cmake)
     endif()
 endif()
