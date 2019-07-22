@@ -20,5 +20,5 @@ RUN apt install -y libboost-atomic1.67-dev \
                    build-essential libgmp-dev libmpfr-dev libvtk6-dev libtbb-dev cmake
 COPY gmsh /GMSH
 COPY cgal /CGAL
-RUN cd /GMSH && mkdir build_lib && cd build_lib && cmake -DDEFAULT=0 -DENABLE_PARSER=1 -DENABLE_BUILD_DYNAMIC=1 .. && make -j
+RUN cd /GMSH && mkdir build_lib && cd build_lib && cmake -DDEFAULT=0 -DENABLE_PARSER=1 -DENABLE_BUILD_DYNAMIC=1 .. && make -j && make install
 RUN cd /CGAL && mkdir build && cd build/ && cmake -DCMAKE_BUILD_TYPE=Release .. && make -j 12 && make install 

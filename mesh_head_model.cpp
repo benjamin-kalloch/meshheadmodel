@@ -596,7 +596,7 @@ int main(int argc, char*argv[])
   }
 
   
-  // 2) Load the segmentation imagea
+  // 2) Load the segmentation images
   // possible input format:
   //     ANALYZE-image format (hdr + img file) in unsigned byte format, NOT short or unsigned int
   //  Why Byte? Because:
@@ -906,30 +906,45 @@ int main(int argc, char*argv[])
   std::vector<int> physical_group_tags;
   physical_group_tags.reserve( model_volumes.size() + model_surfaces.size() ); // reserve but do not allocate
 
-  int ctr = 0;
+  int ctr = 1;
   for( std::pair<int,int> volume : model_volumes )
   {
       std::vector<int> tag { volume.second };   // first = dimension (3 for volume)
       std::string group_name("Volume ");
-      physical_group_tags.push_back( gmsh::model::addPhysicalGroup(volume.first, tag, ctr) );
+      gmsh::model::addPhysicalGroup(volume.first, tag, ctr);
       group_name.append( std::to_string( ctr ) );
-      if( ! export_simnibs_compatible )
+      if( ! export_simnibs_compatible ) // SimNIBS is incompatible with names of physical groups
       {
-        gmsh::model::setPhysicalName( volume.first, physical_group_tags.back(), group_name );
+        gmsh::model::setPhysicalName( volume.first, ctr, group_name );
       }
       ctr++;
   }
+  
+  // For OpenFOAM we only need the last n surfaces which are the electrodes
+  gmsh::vectorpair temp;
+  size_t lastSurfaceIndex = model_surfaces.size() - 1;
+  if( !export_simnibs_compatible )
+  {
+      temp.reserve( electrodepaths.size() );
+      for( size_t e = 0; e < electrodepaths.size(); e++ )
+      {
+        temp.push_back( model_surfaces.at( lastSurfaceIndex - e ) );
+        std::cout << "[DEBUG] Adding electrode #" << e  << " to Physical Surfaces." << std::endl;
+      }
 
-  ctr = 0;
+      model_surfaces.swap( temp );
+  }
+
+  ctr = 1000;
   for( std::pair<int,int> surface : model_surfaces )
   {
       std::vector<int> tag { surface.second };   // first = dimension (2 for surface)
       std::string group_name("Surface ");
-      physical_group_tags.push_back( gmsh::model::addPhysicalGroup(surface.first, tag, ctr + 1000) );
-      group_name.append( std::to_string( ctr + 1000 ) );
+      gmsh::model::addPhysicalGroup(surface.first, tag, ctr);
+      group_name.append( std::to_string( ctr ) );
       if( ! export_simnibs_compatible )
       {
-        gmsh::model::setPhysicalName( surface.first, physical_group_tags.back(), group_name );
+        gmsh::model::setPhysicalName( surface.first, ctr, group_name );
       }
       ctr++;
   }
