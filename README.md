@@ -58,7 +58,7 @@ When compiled in the container, the tool also must be launched from inside the c
 
 [2] THe GMSH project: http://gmsh.info/
 
-[3] GMSH 4.3.0 source code: http://gmsh.info/bin/Linux/gmsh-4.3.0-Linux64.tgz
+[3] GMSH 4.3.0 source code: http://gmsh.info/src/gmsh-4.3.0-source.tgz
 
 [4] CGAL 4.13.1 source code: https://github.com/CGAL/cgal/releases/download/releases%2FCGAL-4.13.1/CGAL-4.13.1.tar.xz
 

@@ -623,27 +623,27 @@ int main(int argc, char*argv[])
   //  Its (absolute) value should stay smaller than facet_size or cell_size and facet_distance. 
   CGAL::Image_3 image;
   std::shared_ptr< Image_domain> image_domain_ptr(nullptr);
-  if( !image.read(imagefile) )
-  {
-      std::cerr << "Error: Cannot read file " <<  imagefile << std::endl;
-      return EXIT_FAILURE;
-  }
-  else
-  {
-      image_domain_ptr = std::make_shared< Image_domain >
-      ( 
-          Image_domain::create_labeled_image_mesh_domain
-          ( 
-              CGAL::parameters::image=image, 
-              CGAL::parameters::relative_error_bound=1e-10
-          )
-      );
-  }
 
   // ********* Assemble the the hybrid domain for mashing **********
   Domain domain;
   if( imagefile )
   {
+    if( !image.read(imagefile) )
+    {
+        std::cerr << "Error: Cannot read file " <<  imagefile << std::endl;
+        return EXIT_FAILURE;
+    }
+    else
+    {
+        image_domain_ptr = std::make_shared< Image_domain >
+        ( 
+            Image_domain::create_labeled_image_mesh_domain
+            ( 
+                CGAL::parameters::image=image, 
+                CGAL::parameters::relative_error_bound=1e-10
+            )
+        );
+    }
     domain.Set_ImageDomain( image_domain_ptr );
   }
 
