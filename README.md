@@ -1,6 +1,7 @@
 # MeshHeadModel
 
-This application uses the CGAL API to generate a tetrahedral volume mesh from a 3D label image (ANALYZE file format) and optionally surface files (OFF file format) of the outer shell (i.e. the skin compartment) and the electrodes attached to the skin. The application will be detailed in in the paper **A flexible open-source pipeline for simulating transcranial electric stimulation** by *Benjamin Kalloch, Pierre-Louis Bazin, Arno Villringer, Bernhard Sehm, and Mario Hlawitschka*.
+This application uses the CGAL API to generate a tetrahedral volume mesh from a 3D label image (ANALYZE file format) and optionally surface files (OFF file format) of the outer shell (i.e. the skin compartment) and the electrodes attached to the skin. The application will be detailed in in the paper **A flexible workflow for simulating transcranial electric stimulation in healthy and lesioned brains** by *Benjamin Kalloch, Pierre-Louis Bazin, Arno Villringer, Bernhard Sehm, and Mario Hlawitschka*.
+
 
 ## How to compile
 You need the following prerequisite
