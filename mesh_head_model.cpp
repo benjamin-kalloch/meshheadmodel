@@ -78,10 +78,13 @@ class Hybrid_domain
   std::shared_ptr<Image_domain> m_image_domain;                    // domain containing the segmentation image
   std::shared_ptr< std::vector< std::shared_ptr<Polyhedron_domain> > > m_poly_domains; // vector of domains for an unknown number of electrode surfaces
 
+  size_t m_num_electrodes;
+
 public:
   Hybrid_domain( ) :
     m_image_domain( nullptr ),
-    m_poly_domains( nullptr )
+    m_poly_domains( nullptr ),
+    m_num_electrodes( 0 )
   { }
   
   Hybrid_domain( std::shared_ptr<Image_domain> _image_domain, std::shared_ptr< std::vector< std::shared_ptr<Polyhedron_domain> > > _poly_domains) :
@@ -107,6 +110,11 @@ public:
   void Set_PolyDomains( std::shared_ptr< std::vector< std::shared_ptr<Polyhedron_domain> > > _poly_domains )
   {
     m_poly_domains = std::move(_poly_domains);
+  }
+
+  void set_number_of_electrodes( size_t num_electr )
+  {
+    m_num_electrodes = num_electr;
   }
 
   //
@@ -185,8 +193,8 @@ public:
         if( r_domain_.m_poly_domains )
         {
             // @TODO: verify if this is necessary or whether we can remove this prior assumption on the input data...
-            //for( std::size_t d = (r_domain_.m_poly_domains->size() >= 3 ? 1 : 0); d < r_domain_.m_poly_domains->size() - 2; d++)
-            for( std::size_t d = 0; d < r_domain_.m_poly_domains->size(); d++)
+            for( std::size_t d = (r_domain_.m_num_electrodes > 0 ? 1 : 0); d < r_domain_.m_poly_domains->size() - r_domain_.m_num_electrodes; d++)
+            //for( std::size_t d = 0; d < r_domain_.m_poly_domains->size(); d++)
             {
                 std::shared_ptr<Polyhedron_domain> poly_domain = r_domain_.m_poly_domains->at(d);
 
@@ -624,7 +632,7 @@ int main(int argc, char*argv[])
   CGAL::Image_3 image;
   std::shared_ptr< Image_domain> image_domain_ptr(nullptr);
 
-  // ********* Assemble the the hybrid domain for mashing **********
+  // ********* Assemble the the hybrid domain for meshing **********
   Domain domain;
   if( imagefile )
   {
@@ -653,6 +661,7 @@ int main(int argc, char*argv[])
      if( featured_curves.size() > 0 )
      {
         domain.add_features( featured_curves.begin(), featured_curves.end() );
+        domain.set_number_of_electrodes( electrodepaths.size() );
      }
   }
 
