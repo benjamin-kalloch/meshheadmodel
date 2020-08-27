@@ -1,22 +1,23 @@
-FROM ubuntu:disco
+FROM ubuntu:focal
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt -y update 
 RUN apt -y upgrade
-RUN apt install -y libboost-atomic1.67-dev \
-                   libboost-atomic1.67.0 \
-                   libboost-chrono1.67-dev \
-                   libboost-chrono1.67.0 \
-                   libboost-date-time1.67-dev \
-                   libboost-date-time1.67.0 \
+RUN apt install -y libboost1.71-dev \
+                   libboost-atomic1.71-dev \
+                   libboost-atomic1.71.0 \
+                   libboost-chrono1.71-dev \
+                   libboost-chrono1.71.0 \
+                   libboost-date-time1.71-dev \
+                   libboost-date-time1.71.0 \
                    libboost-program-options-dev \
-                   libboost-program-options1.67-dev \
-                   libboost-program-options1.67.0 \
-                   libboost-serialization1.67-dev \
-                   libboost-serialization1.67.0 \
+                   libboost-program-options1.71-dev \
+                   libboost-program-options1.71.0 \
+                   libboost-serialization1.71-dev \
+                   libboost-serialization1.71.0 \
                    libboost-system-dev \
-                   libboost-system1.67-dev \
+                   libboost-system1.71-dev \
                    libboost-thread-dev \
-                   libboost-thread1.67-dev \
+                   libboost-thread1.71-dev \
                    build-essential libgmp-dev libmpfr-dev libvtk6-dev libtbb-dev cmake
 COPY gmsh /GMSH
 COPY cgal /CGAL

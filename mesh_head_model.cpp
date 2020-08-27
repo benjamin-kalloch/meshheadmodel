@@ -758,7 +758,7 @@ int main(int argc, char*argv[])
     c3t3.set_dimension( vh, 2 );
   }
     // start Delaunay triangulation using the provided seed points
-  CGAL::refine_mesh_3<C3t3>( c3t3, domain, criteria, no_perturb(), no_exude(), no_lloyd(), no_odt() );
+  CGAL::refine_mesh_3( c3t3, domain, criteria, no_perturb(), no_exude(), no_lloyd(), no_odt() );
 
   t_end = tic();
   printDuration( t_start, t_end );
