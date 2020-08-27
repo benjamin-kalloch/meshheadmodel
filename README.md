@@ -5,10 +5,10 @@ This application uses the CGAL API to generate a tetrahedral volume mesh from a 
 
 ## How to compile
 You need the following prerequisite
-- On Ubuntu 19.04 the following packages are required: *build-essential libgmp-dev libmpfr-dev libvtk6-dev cmake libboost-atomic1.67-dev libboost-atomic1.67.0 libboost-chrono1.67-dev libboost-chrono1.67.0 libboost-date-time1.67-dev libboost-date-time1.67.0 libboost-program-options-dev libboost-program-options1.67-dev libboost-program-options1.67.0 libboost-serialization1.67-dev libboost-serialization1.67.0 libboost-system-dev libboost-system1.67-dev libboost-thread-dev* (this will also install the dependencies for CGAL and GMSH)
+- On Ubuntu 20.04 the following packages are required: *build-essential libgmp-dev libmpfr-dev libvtk6-dev cmake libboost-atomic1.71-dev libboost-atomic1.71.0 libboost-chrono1.71-dev libboost-chrono1.71.0 libboost-date-time1.71-dev libboost-date-time1.71.0 libboost-program-options-dev libboost-program-options1.71-dev libboost-program-options1.71.0 libboost-serialization1.71-dev libboost-serialization1.71.0 libboost-system-dev libboost-system1.71-dev libboost-thread-dev* (this will also install the dependencies for CGAL and GMSH)
 - Download the GMSH 4.3.0 source code [3]
 - Download the CGAL 4.13.1 source code [4]
-*Note* While Ubuntu 19.04 contains CGAL v.4.13.1 as well, the version included in the Ubuntu repositories is lacking a fix concerning the mesh export causing arbitrary normal orientation for boundary faces in the exported mesh. Therefore, we must compile CGAL from the sources. A more convenient approach is explained in the second part of this README utilizing a Docker.
+*Note* While already Ubuntu 19.04 included CGAL v.4.13.1, the version included in the Ubuntu repositories is lacking a fix concerning the mesh export causing arbitrary normal orientation for boundary faces in the exported mesh. More recent versions of Ubuntu include newer versions of CGAL that may contain breaking changes. Therefore, we must compile CGAL 4.13.1 from the sources. A more convenient approach is explained in the second part of this README utilizing a Docker.
 
 
 After ensuring that all prerequisites are met follow this procedure
@@ -43,7 +43,7 @@ The following parameters are supported by our meshing tool ([!]=mandatory parame
 *Note* If you did not install CGAL to the default location `/usr/local/lib/`, you must adapt the  variable 'CGAL_LIBRARY_LOCATION' in the runMeshingTool-script accordingly.
 
 ## Secondary information
-To facilitate the setup of the proper environment to built the MeshHeadModel tool, we provide a Dockerfile to create a container based on Ubuntu 19.04 which contains all required libraries. 
+To facilitate the setup of the proper environment to built the MeshHeadModel tool, we provide a Dockerfile to create a container based on Ubuntu 20.04 which contains all required libraries. 
 
 Simply build the container with `docker build -t cgal_and_gmsh_compiled_with_tbb_ubuntu1904 .` in the docker directory of this repository.
 
